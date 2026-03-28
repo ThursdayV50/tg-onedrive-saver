@@ -15,6 +15,6 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests msal telethon aiohttp
       - name: Run Bot
         run: python main.py
