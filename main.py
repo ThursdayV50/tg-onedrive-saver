@@ -3,7 +3,7 @@ import requests
 import time
 import sys
 
-# 凭据：硬编码新 Token 以防 Secrets 延迟
+# 凭据
 BOT_TOKEN = "8615577076:AAGCcVkOYGq6uji9y0XlQodEiI3He0i08aU"
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
