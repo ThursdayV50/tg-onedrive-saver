@@ -27,7 +27,8 @@ async def main():
         @client.on(events.NewMessage(pattern='/start'))
         async def start_handler(event):
             print(">>> Received /start, initiating Microsoft Device Flow...")
-            app = PublicClientApplication(CLIENT_ID, authority="https://login.microsoftonline.com/common")
+            # 修正：将 authority 从 /common 改为 /consumers 以支持个人版 OneDrive
+            app = PublicClientApplication(CLIENT_ID, authority="https://login.microsoftonline.com/consumers")
             
             # 获取授权 flow
             flow = app.initiate_device_flow(scopes=SCOPES)
