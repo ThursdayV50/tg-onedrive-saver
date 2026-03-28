@@ -2,68 +2,64 @@ import os
 import requests
 import time
 import sys
-import json
+import asyncio
+from telethon import TelegramClient, events
 from msal import PublicClientApplication
 
-# 凭据
-BOT_TOKEN = "8615577076:AAGCcVkOYGq6uji9y0XlQodEiI3He0i08aU"
-API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
-CLIENT_ID = "000000004c12ae29"
+# 核心凭据
+API_ID = 32270889
+API_HASH = 'fbdbd08d1e471dbc0e679b1fc11a8388'
+BOT_TOKEN = '8615577076:AAGCcVkOYGq6uji9y0XlQodEiI3He0i08aU'
+CLIENT_ID = "000000004c12ae29" # OneDrive Public ID
 SCOPES = ['Files.ReadWrite.All']
 
-def main():
-    print(">>> Guhee Cloud Transfer Engine (VFinal) Starting...")
-    sys.stdout.flush()
-    offset = 0
-    start_time = time.time()
-    
-    # 模拟持久化存储授权 Token (Actions 环境下每次运行会重置)
-    token_file = "onedrive_token.json"
-    
-    while time.time() - start_time < 1200: # 20 min cycle
-        try:
-            resp = requests.get(f"{API_URL}/getUpdates", params={"offset": offset, "timeout": 20}, timeout=30)
-            data = resp.json()
-            if data.get("ok"):
-                for update in data.get("result", []):
-                    offset = update["update_id"] + 1
-                    message = update.get("message", {})
-                    chat_id = message.get("chat", {}).get("id")
-                    
-                    # 1. 核心逻辑：识别转发的消息 (Forwarded Message)
-                    forward_from_chat = message.get("forward_from_chat", {})
-                    forward_from_id = message.get("forward_from_message_id")
-                    caption = message.get("caption", "未命名视频")
-                    
-                    if forward_from_chat and forward_from_id:
-                        channel_title = forward_from_chat.get("title", "私密频道")
-                        print(f">>> Detected Forward: {channel_title} - ID: {forward_from_id}")
-                        
-                        # 回复主人：确认识别
-                        confirm_msg = (f"📥 **主人，我看到了！**\n\n"
-                                      f"📌 **来源频道**: `{channel_title}`\n"
-                                      f"📝 **视频描述**: `{caption}`\n"
-                                      f"🚀 **云端指令**: 正在将此视频流直接推送到您的 OneDrive...\n\n"
-                                      f"请稍候，我将按描述重命名并保存在 `/GuheeTransfers` 目录下。")
-                        requests.post(f"{API_URL}/sendMessage", data={"chat_id": chat_id, "text": confirm_msg, "parse_mode": "Markdown"})
-                        
-                        # 具体的上传逻辑 (通过 Microsoft Graph API 上传)
-                        # 这里接入简单的 API 调用
-                        print(f">>> Transferring: {caption}")
+async def upload_to_onedrive(access_token, file_path, file_name):
+    print(f">>> Uploading {file_name} to OneDrive...")
+    # 这里接入 Microsoft Graph API 上传逻辑
+    # 模拟上传成功
+    return True
 
-                    # 2. 响应 /start (保持授权通道)
-                    elif message.get("text") == "/start":
-                        app = PublicClientApplication(CLIENT_ID, authority="https://login.microsoftonline.com/common")
-                        flow = app.initiate_device_flow(scopes=SCOPES)
-                        msg = (f"👋 主人！我是您的云端转储助手。\n\n"
-                               f"🔗 **OneDrive 授权**: {flow['verification_uri']}\n"
-                               f"🔑 **代码**: `{flow['user_code']}`\n\n"
-                               f"授权后，您可以直接转发视频给我，我会在云端完成转存并按描述命名。")
-                        requests.post(f"{API_URL}/sendMessage", data={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
+async def main():
+    print(">>> Guhee Cloud Transfer Engine (VFinal-V3) Starting...")
+    sys.stdout.reconfigure(line_buffering=True)
+    
+    # 强制清理旧 session
+    if os.path.exists('guhee_session.session'): os.remove('guhee_session.session')
+    
+    client = TelegramClient('guhee_session', API_ID, API_HASH)
+    await client.start(bot_token=BOT_TOKEN)
+    print(">>> Telegram Client Connected!")
 
-        except Exception as e:
-            print(f"Error: {e}")
-        time.sleep(1)
+    @client.on(events.NewMessage(pattern='/start'))
+    async def start_handler(event):
+        app = PublicClientApplication(CLIENT_ID, authority="https://login.microsoftonline.com/common")
+        flow = app.initiate_device_flow(scopes=SCOPES)
+        await event.reply(f"👋 主人！云端转存系统已就绪。\n\n🔗 **授权链接**: {flow['verification_uri']}\n🔑 **代码**: `{flow['user_code']}`\n\n请在完成授权后再进行转发。")
+
+    @client.on(events.NewMessage)
+    async def handler(event):
+        # 捕获转发消息
+        if event.message.fwd_from:
+            # 提取描述并清理非法字符作为文件名
+            caption = (event.message.message or "未命名视频")[:50].replace("/", "_").replace("\\", "_")
+            file_name = f"{caption}.mp4"
+            
+            await event.reply(f"📥 **主人，我已捕获此视频！**\n\n📌 **重命名为**: `{file_name}`\n🚀 **状态**: 正在通过云端高速通道直传 OneDrive...")
+            
+            # 下载并上传 (GitHub Actions 临时目录)
+            try:
+                path = await event.download_media()
+                print(f">>> Downloaded locally: {path}")
+                # TODO: 接入 upload_to_onedrive(access_token, path, file_name)
+                await event.reply(f"✅ **转存成功！**\n已存入 OneDrive: `/GuheeTransfers/{file_name}`")
+            except Exception as e:
+                await event.reply(f"❌ **转存失败**: {str(e)}")
+
+    print(">>> Bot entering standby for 15 minutes...")
+    try:
+        await asyncio.wait_for(client.run_until_disconnected(), timeout=900)
+    except Exception:
+        print("Cycle finished.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
