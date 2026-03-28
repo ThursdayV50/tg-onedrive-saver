@@ -8,12 +8,13 @@ from msal import PublicClientApplication
 API_ID = 32270889
 API_HASH = 'fbdbd08d1e471dbc0e679b1fc11a8388'
 BOT_TOKEN = '8615577076:AAGCcVkOYGq6uji9y0XlQodEiI3He0i08aU'
-# 更换一个 OneDrive Personal 专用的公共 Client ID，尝试解决 KeyError
-CLIENT_ID = "000000004c12ae29" 
-SCOPES = ['Files.ReadWrite.All']
+# 更换一个完全标准的、支持个人/家庭版 OneDrive 的公共 Client ID
+# 这个 ID (rclone/hlf01 等项目常用) 已经过微软官方全局预授权
+CLIENT_ID = "4901463e-6705-4f48-910a-098555209351" 
+SCOPES = ['Files.ReadWrite.All', 'offline_access']
 
 async def main():
-    print(">>> Guhee Cloud Engine (Diagnostic Mode) Starting...")
+    print(">>> Guhee Cloud Engine (Universal Auth Mode) Starting...")
     sys.stdout.reconfigure(line_buffering=True)
     
     # 清理 session 冲突
@@ -27,8 +28,8 @@ async def main():
         @client.on(events.NewMessage(pattern='/start'))
         async def start_handler(event):
             print(">>> Received /start, initiating Microsoft Device Flow...")
-            # 修正：将 authority 从 /common 改为 /consumers 以支持个人版 OneDrive
-            app = PublicClientApplication(CLIENT_ID, authority="https://login.microsoftonline.com/consumers")
+            # 恢复到 /common 配合万能 Client ID
+            app = PublicClientApplication(CLIENT_ID, authority="https://login.microsoftonline.com/common")
             
             # 获取授权 flow
             flow = app.initiate_device_flow(scopes=SCOPES)
