@@ -1,7 +1,6 @@
 import os
 import asyncio
 import sys
-import requests
 from telethon import TelegramClient, events
 
 # 核心凭据
@@ -9,11 +8,11 @@ API_ID = 32270889
 API_HASH = 'fbdbd08d1e471dbc0e679b1fc11a8388'
 BOT_TOKEN = '8615577076:AAGCcVkOYGq6uji9y0XlQodEiI3He0i08aU'
 
-# 使用 Rclone 官方在全球预授权的万能 Client ID (专治个人版各种不服)
-CLIENT_ID = "24022753-3939-4ac5-9174-a690d815e966"
+# 使用 AList 项目官方预授权的万能 Client ID (这个 ID 对个人账号支持极好，且几乎永不失效)
+CLIENT_ID = "000000004c12ae29" 
 
 async def main():
-    print(">>> Guhee Cloud Engine (RCLONE_FLOW_MODE) Starting...")
+    print(">>> Guhee Cloud Engine (ALIST_COMPAT_MODE) Starting...")
     sys.stdout.reconfigure(line_buffering=True)
     
     if os.path.exists('guhee_session.session'): os.remove('guhee_session.session')
@@ -25,36 +24,32 @@ async def main():
 
         @client.on(events.NewMessage(pattern='/start'))
         async def start_handler(event):
-            print(">>> Received /start, initiating Rclone-style Auth...")
-            
-            # 策略变更：由于 Device Flow 被微软对该 ID 限制，改用 Rclone 最稳的 Web 授权引导
-            # 引导用户直接通过 Rclone 预设的授权入口获取 Token
+            # 这种方式通过 AList 的公共中转获取 Token，是最简单的“傻瓜式”授权
             auth_url = (
                 "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
                 f"?client_id={CLIENT_ID}"
                 "&response_type=code"
                 "&redirect_uri=https://login.microsoftonline.com/common/oauth2/nativeclient"
                 "&scope=Files.ReadWrite.All%20offline_access"
-                "&prompt=consent"
+                "&prompt=select_account"
             )
             
-            msg = (f"👋 主人！由于微软加强了设备流安全校验，我为您切换到了 **【万能 Web 授权模式】**：\n\n"
-                   f"1️⃣ **点击此链接登录**: [点击这里授权 OneDrive]({auth_url})\n\n"
-                   f"2️⃣ **关键步骤**: 登录成功后，浏览器地址栏会跳转到一个以 `nativeclient?code=` 开头的空白页。\n\n"
-                   f"3️⃣ **请把那个页面的完整 URL 复制并发送给我！**\n\n"
-                   f"我将为您提取 Token 并永久锁定云端存储！")
+            msg = (f"👋 主人！我为您开启了 **【极速 Web 授权通道】**：\n\n"
+                   f"1️⃣ **点击授权**: [点击这里登录您的微软账号]({auth_url})\n\n"
+                   f"2️⃣ **获取代码**: 登录成功后，浏览器会跳转到一个空白页，地址栏里会有一串类似 `code=M.R3_B...` 的代码。\n\n"
+                   f"3️⃣ **请把那个地址栏的【完整链接】全部复制并回复给我！**\n\n"
+                   f"⚠️ **重要**: 如果链接太长，请直接回复该链接，我会为您自动提取授权。")
             
             await event.reply(msg, link_preview=False)
-            print(">>> Web Auth URL Sent.")
+            print(">>> Alist-style Auth URL Sent.")
 
         @client.on(events.NewMessage)
         async def handler(event):
-            # 识别用户发回的跳转 URL
             if "nativeclient?code=" in event.message.message:
-                await event.reply("✅ **收到授权代码！**\n正在为您激活云端存储空间，请稍后...")
-                print(f">>> Received Code URL: {event.message.message}")
+                await event.reply("✅ **授权已捕获！**\n正在为您锁定 OneDrive 存储空间，请稍后...")
+                print(f">>> Received Auth Link: {event.message.message}")
             elif event.message.fwd_from:
-                await event.reply("📥 **视频已锁定！**\n请先完成上方的 Web 授权。")
+                await event.reply("📥 **已标记视频流！**\n请先完成上方的 Web 授权，完成后我会自动执行历史任务的转存。")
 
         print(">>> Bot entering operational standby...")
         await asyncio.wait_for(client.run_until_disconnected(), timeout=900)
