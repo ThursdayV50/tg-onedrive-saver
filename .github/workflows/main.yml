@@ -1,8 +1,8 @@
 name: Guhee Cloud Transfer
 on:
   schedule:
-    - cron: '*/5 * * * *' # 每5分钟主动拉取一次更新 (解决 Actions 无法长时间 Long Polling 的问题)
-  workflow_dispatch:
+    - cron: '*/10 * * * *' # 每10分钟唤醒一次
+  workflow_dispatch: # 支持手动触发
 
 jobs:
   transfer:
@@ -16,12 +16,9 @@ jobs:
           python-version: '3.11'
       - name: Install dependencies
         run: pip install telethon msal aiohttp
-      - name: Run Guhee Script
+      - name: Run Bot
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CLIENT_ID: "000000004c12ae29"
-        run: |
-          # 这里写入精简的拉取上传逻辑
-          python -c 'print("Guhee Cloud Engine checking for updates...")'
+        run: python main.py
