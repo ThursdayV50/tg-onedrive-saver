@@ -1,0 +1,27 @@
+name: Guhee Cloud Transfer
+on:
+  schedule:
+    - cron: '*/5 * * * *' # 每5分钟主动拉取一次更新 (解决 Actions 无法长时间 Long Polling 的问题)
+  workflow_dispatch:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install telethon msal aiohttp
+      - name: Run Guhee Script
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CLIENT_ID: "000000004c12ae29"
+        run: |
+          # 这里写入精简的拉取上传逻辑
+          python -c 'print("Guhee Cloud Engine checking for updates...")'
