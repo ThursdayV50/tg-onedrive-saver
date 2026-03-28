@@ -1,13 +1,12 @@
 name: Guhee Cloud Transfer
 on:
   schedule:
-    - cron: '*/20 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
   transfer:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,10 +15,6 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install telethon msal aiohttp
+        run: pip install requests
       - name: Run Bot
-        env:
-          API_ID: ${{ secrets.API_ID }}
-          API_HASH: ${{ secrets.API_HASH }}
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: python main.py
