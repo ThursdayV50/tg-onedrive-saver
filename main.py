@@ -8,13 +8,12 @@ from msal import PublicClientApplication
 API_ID = 32270889
 API_HASH = 'fbdbd08d1e471dbc0e679b1fc11a8388'
 BOT_TOKEN = '8615577076:AAGCcVkOYGq6uji9y0XlQodEiI3He0i08aU'
-# 更换一个完全标准的、支持个人/家庭版 OneDrive 的公共 Client ID
-# 这个 ID (rclone/hlf01 等项目常用) 已经过微软官方全局预授权
-CLIENT_ID = "4901463e-6705-4f48-910a-098555209351" 
-SCOPES = ['Files.ReadWrite.All', 'offline_access']
+# 修正 Scopes：MSAL 库会自动处理 offline_access，手动加入会导致 ValueError
+# 只保留核心的文件读写权限
+SCOPES = ['Files.ReadWrite.All']
 
 async def main():
-    print(">>> Guhee Cloud Engine (Universal Auth Mode) Starting...")
+    print(">>> Guhee Cloud Engine (Refined Auth Mode) Starting...")
     sys.stdout.reconfigure(line_buffering=True)
     
     # 清理 session 冲突
