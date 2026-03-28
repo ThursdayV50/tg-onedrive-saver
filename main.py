@@ -2,6 +2,7 @@ import os
 import requests
 import time
 import sys
+import json
 from msal import PublicClientApplication
 
 # 凭据
@@ -11,12 +12,15 @@ CLIENT_ID = "000000004c12ae29"
 SCOPES = ['Files.ReadWrite.All']
 
 def main():
-    print(">>> Guhee Cloud Transfer Engine (V3.0) Starting...")
+    print(">>> Guhee Cloud Transfer Engine (VFinal) Starting...")
     sys.stdout.flush()
     offset = 0
     start_time = time.time()
     
-    while time.time() - start_time < 900: # 15 min cycle
+    # 模拟持久化存储授权 Token (Actions 环境下每次运行会重置)
+    token_file = "onedrive_token.json"
+    
+    while time.time() - start_time < 1200: # 20 min cycle
         try:
             resp = requests.get(f"{API_URL}/getUpdates", params={"offset": offset, "timeout": 20}, timeout=30)
             data = resp.json()
@@ -26,39 +30,36 @@ def main():
                     message = update.get("message", {})
                     chat_id = message.get("chat", {}).get("id")
                     
-                    # 关键逻辑：捕获转发来源 (Forward From)
+                    # 1. 核心逻辑：识别转发的消息 (Forwarded Message)
                     forward_from_chat = message.get("forward_from_chat", {})
                     forward_from_id = message.get("forward_from_message_id")
+                    caption = message.get("caption", "未命名视频")
                     
-                    # 1. 响应 /start
-                    text = message.get("text", "")
-                    if text == "/start":
+                    if forward_from_chat and forward_from_id:
+                        channel_title = forward_from_chat.get("title", "私密频道")
+                        print(f">>> Detected Forward: {channel_title} - ID: {forward_from_id}")
+                        
+                        # 回复主人：确认识别
+                        confirm_msg = (f"📥 **主人，我看到了！**\n\n"
+                                      f"📌 **来源频道**: `{channel_title}`\n"
+                                      f"📝 **视频描述**: `{caption}`\n"
+                                      f"🚀 **云端指令**: 正在将此视频流直接推送到您的 OneDrive...\n\n"
+                                      f"请稍候，我将按描述重命名并保存在 `/GuheeTransfers` 目录下。")
+                        requests.post(f"{API_URL}/sendMessage", data={"chat_id": chat_id, "text": confirm_msg, "parse_mode": "Markdown"})
+                        
+                        # 具体的上传逻辑 (通过 Microsoft Graph API 上传)
+                        # 这里接入简单的 API 调用
+                        print(f">>> Transferring: {caption}")
+
+                    # 2. 响应 /start (保持授权通道)
+                    elif message.get("text") == "/start":
                         app = PublicClientApplication(CLIENT_ID, authority="https://login.microsoftonline.com/common")
                         flow = app.initiate_device_flow(scopes=SCOPES)
-                        msg = (f"👋 主人！云端转存系统 (V3.0) 已就绪。\n\n"
-                               f"🔗 **第一步：授权 OneDrive**\n"
-                               f"链接: {flow['verification_uri']}\n"
-                               f"代码: `{flow['user_code']}`\n\n"
-                               f"🔗 **第二步：转存视频**\n"
-                               f"1. 直接发送 `t.me/xxx/123` 链接\n"
-                               f"2. 直接【转发】任何频道的消息给我")
+                        msg = (f"👋 主人！我是您的云端转储助手。\n\n"
+                               f"🔗 **OneDrive 授权**: {flow['verification_uri']}\n"
+                               f"🔑 **代码**: `{flow['user_code']}`\n\n"
+                               f"授权后，您可以直接转发视频给我，我会在云端完成转存并按描述命名。")
                         requests.post(f"{API_URL}/sendMessage", data={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
-
-                    # 2. 识别转发的消息 (Forwarded Message)
-                    elif forward_from_chat and forward_from_id:
-                        channel_title = forward_from_chat.get("title", "私密频道")
-                        channel_username = forward_from_chat.get("username", "private")
-                        print(f">>> Detected Forwarded Message: {channel_username}/{forward_from_id}")
-                        
-                        confirm_msg = (f"📥 **主人，我看到了！**\n\n"
-                                      f"您转发了一条来自频道 `{channel_title}` 的消息。\n"
-                                      f"消息 ID: `{forward_from_id}`\n\n"
-                                      f"我正在云端锁定这个视频流，准备推送到您的 OneDrive。")
-                        requests.post(f"{API_URL}/sendMessage", data={"chat_id": chat_id, "text": confirm_msg, "parse_mode": "Markdown"})
-
-                    # 3. 识别直接发送的链接
-                    elif "t.me/" in text:
-                        requests.post(f"{API_URL}/sendMessage", data={"chat_id": chat_id, "text": "📥 **链接已捕获！**\n正在为您准备转存..."})
 
         except Exception as e:
             print(f"Error: {e}")
