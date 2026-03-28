@@ -7,7 +7,7 @@ from msal import PublicClientApplication
 # 获取凭据
 API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '')
+BOT_TOKEN = '8615577076:AAGCcVkOYGq6uji9y0XlQodEiI3He0i08aU'
 # 备用公共 ID 尝试
 CLIENT_ID = "000000004c12ae29" 
 SCOPES = ['Files.ReadWrite.All']
