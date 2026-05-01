@@ -37,7 +37,7 @@ services:
     environment:
       - TELEGRAM_BOT_API_BASE_URL=http://telegram-bot-api:8081/bot
       - TELEGRAM_BOT_API_BASE_FILE_URL=http://telegram-bot-api:8081/file/bot
-      - TELEGRAM_LOCAL_MODE=false
+      - TELEGRAM_LOCAL_MODE=true
       - ONEDRIVE_LOCAL_SYNC_DIR=/sync
     volumes:
       - ./data/queue:/sync

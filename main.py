@@ -27,7 +27,7 @@ TELEGRAM_BOT_API_BASE_URL = os.getenv(
 TELEGRAM_BOT_API_BASE_FILE_URL = os.getenv(
     "TELEGRAM_BOT_API_BASE_FILE_URL", "http://telegram-bot-api:8081/file/bot"
 ).strip()
-TELEGRAM_LOCAL_MODE = os.getenv("TELEGRAM_LOCAL_MODE", "false").strip().lower() == "true"
+TELEGRAM_LOCAL_MODE = os.getenv("TELEGRAM_LOCAL_MODE", "true").strip().lower() == "true"
 
 ONEDRIVE_LOCAL_SYNC_DIR = os.getenv("ONEDRIVE_LOCAL_SYNC_DIR", "/sync").strip()
 ONEDRIVE_TARGET_DIR = os.getenv("ONEDRIVE_TARGET_DIR", "TelegramVideos").strip("/")
