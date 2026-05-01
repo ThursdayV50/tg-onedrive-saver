@@ -251,8 +251,11 @@ def _try_upload_by_input(page, file_path: Path) -> bool:
     for sel in selectors:
         inputs = page.locator(sel)
         if inputs.count() > 0:
-            inputs.first.set_input_files(str(file_path))
-            return True
+            try:
+                inputs.first.set_input_files(str(file_path), timeout=3000)
+                return True
+            except Exception:
+                pass
     return False
 
 
@@ -269,9 +272,9 @@ def _try_upload_by_button(page, file_path: Path) -> bool:
         # 直接点击“上传”按钮，若触发 file chooser 则上传
         try:
             with page.expect_file_chooser(timeout=3000) as fc_info:
-                page.get_by_role("button", name=pat).first.click()
+                page.get_by_role("button", name=pat).first.click(timeout=3000)
             chooser = fc_info.value
-            chooser.set_files(str(file_path))
+            chooser.set_files(str(file_path), timeout=3000)
             return True
         except Exception:
             pass
@@ -280,16 +283,16 @@ def _try_upload_by_button(page, file_path: Path) -> bool:
         try:
             new_btn = page.get_by_role("button", name=re.compile(r"new|新建", re.IGNORECASE))
             if new_btn.count() > 0:
-                new_btn.first.click()
+                new_btn.first.click(timeout=3000)
                 page.wait_for_timeout(800)
         except Exception:
             pass
 
         try:
             with page.expect_file_chooser(timeout=3000) as fc_info:
-                page.get_by_role("menuitem", name=pat).first.click()
+                page.get_by_role("menuitem", name=pat).first.click(timeout=3000)
             chooser = fc_info.value
-            chooser.set_files(str(file_path))
+            chooser.set_files(str(file_path), timeout=3000)
             return True
         except Exception:
             pass
@@ -311,11 +314,11 @@ def _try_upload_by_button(page, file_path: Path) -> bool:
                     "xpath=ancestor::*[contains(@class,'ms-ContextualMenu-link')][1]"
                 )
                 if clickable.count() > 0:
-                    clickable.click()
+                    clickable.click(timeout=3000)
                 else:
-                    text_node.click()
+                    text_node.click(timeout=3000)
             chooser = fc_info.value
-            chooser.set_files(str(file_path))
+            chooser.set_files(str(file_path), timeout=3000)
             return True
         except Exception:
             # 有些 UI 不弹 file chooser，但会在 DOM 中动态插入 input[type=file]
@@ -327,13 +330,13 @@ def _try_upload_by_button(page, file_path: Path) -> bool:
                     "xpath=ancestor::*[contains(@class,'ms-ContextualMenu-link')][1]"
                 )
                 if clickable.count() > 0:
-                    clickable.click()
+                    clickable.click(timeout=3000)
                 else:
-                    text_node.click()
+                    text_node.click(timeout=3000)
                 page.wait_for_timeout(800)
                 dynamic_input = page.locator('input[type="file"]')
                 if dynamic_input.count() > 0:
-                    dynamic_input.last.set_input_files(str(file_path))
+                    dynamic_input.last.set_input_files(str(file_path), timeout=3000)
                     return True
             except Exception:
                 pass
