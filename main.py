@@ -121,51 +121,62 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text("收到视频，开始下载并加入 OneDrive 网页上传队列...")
     logger.info("开始处理视频: name=%s size=%s chat_id=%s", origin_name, file_size, chat_id)
 
-    try:
-        tg_file = await context.bot.get_file(
-            telegram_file_id,
-            read_timeout=TELEGRAM_REQUEST_TIMEOUT,
-            write_timeout=120,
-            connect_timeout=30,
-            pool_timeout=30,
-        )
-        if tg_file.file_path:
-            # 优先使用 getFile 返回的 file_path 直链下载，避免 SDK 对 base_file_url 的二次拼接导致 404。
-            await asyncio.to_thread(
-                _download_from_local_bot_api, tg_file.file_path, local_target_path
-            )
-        else:
-            await tg_file.download_to_drive(
-                custom_path=local_target_path,
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            tg_file = await context.bot.get_file(
+                telegram_file_id,
                 read_timeout=TELEGRAM_REQUEST_TIMEOUT,
                 write_timeout=120,
                 connect_timeout=30,
                 pool_timeout=30,
             )
-        meta_path = f"{local_target_path}.meta.json"
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "chat_id": chat_id,
-                    "origin_name": origin_name,
-                    "queued_path": local_target_path,
-                },
-                f,
-                ensure_ascii=False,
-            )
-        await update.message.reply_text(
-            "下载完成，文件已加入 OneDrive 网页上传队列。\n"
-            f"本地路径：{local_target_path}"
-        )
-        logger.info("文件已写入网页上传队列: %s", local_target_path)
-    except Exception as exc:
-        logger.exception("处理视频失败")
-        if "File is too big" in str(exc):
+            if tg_file.file_path:
+                # 优先使用 getFile 返回的 file_path 直链下载，避免 SDK 对 base_file_url 的二次拼接导致 404。
+                await asyncio.to_thread(
+                    _download_from_local_bot_api, tg_file.file_path, local_target_path
+                )
+            else:
+                await tg_file.download_to_drive(
+                    custom_path=local_target_path,
+                    read_timeout=TELEGRAM_REQUEST_TIMEOUT,
+                    write_timeout=120,
+                    connect_timeout=30,
+                    pool_timeout=30,
+                )
+            meta_path = f"{local_target_path}.meta.json"
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "chat_id": chat_id,
+                        "origin_name": origin_name,
+                        "queued_path": local_target_path,
+                    },
+                    f,
+                    ensure_ascii=False,
+                )
             await update.message.reply_text(
-                "下载失败：文件过大。请确认你正在使用自建 Telegram Bot API（local mode）并连接到本地 API 地址。"
+                "下载完成，文件已加入 OneDrive 网页上传队列。\n"
+                f"本地路径：{local_target_path}"
             )
-        else:
-            await update.message.reply_text(f"上传失败：{exc}")
+            logger.info("文件已写入网页上传队列: %s", local_target_path)
+            break  # 成功则跳出重试循环
+        except Exception as exc:
+            err_msg = str(exc)
+            logger.warning("处理视频失败 (尝试 %d/%d): %s", attempt, max_retries, err_msg)
+            if "temporarily unavailable" in err_msg and attempt < max_retries:
+                await update.message.reply_text(f"文件暂时不可用，等待 15 秒后进行第 {attempt + 1} 次重试...")
+                await asyncio.sleep(15)
+                continue
+            
+            logger.exception("处理视频最终失败")
+            if "File is too big" in err_msg:
+                await update.message.reply_text(
+                    "下载失败：文件过大。请确认你正在使用自建 Telegram Bot API（local mode）并连接到本地 API 地址。"
+                )
+            else:
+                await update.message.reply_text(f"下载失败：{err_msg}")
+            break
 
 
 
