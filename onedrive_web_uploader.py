@@ -378,21 +378,53 @@ def _upload_one_file(page, file_path: Path) -> None:
     file_name_short = file_name[:32]
 
     def _name_visible() -> bool:
-        return (
-            page.get_by_text(file_name, exact=False).count() > 0
-            or page.get_by_text(file_name_short, exact=False).count() > 0
-        )
+        found = False
+        for sel in [
+            f'[data-automationid="FieldRenderer-name"]:has-text("{file_name_short}")',
+            f'[data-automation-key="name"]:has-text("{file_name_short}")',
+        ]:
+            if page.locator(sel).count() > 0:
+                found = True
+                break
+        if not found:
+            for role in ["link", "button", "row", "gridcell"]:
+                try:
+                    if page.get_by_role(role, name=re.compile(re.escape(file_name_short))).count() > 0:
+                        found = True
+                        break
+                except Exception:
+                    pass
+        if not found:
+            if page.get_by_text(file_name, exact=False).count() > 0 or page.get_by_text(file_name_short, exact=False).count() > 0:
+                found = True
+        return found
+
+    def _is_uploading_ui() -> bool:
+        if page.get_by_role("progressbar").count() > 0:
+            return True
+        for kw in ["正在上载", "正在上传", "上载中", "上传中", "Uploading"]:
+            if page.get_by_text(kw).count() > 0:
+                return True
+        return False
 
     while time.time() < deadline:
         try:
+            if _is_uploading_ui():
+                now = time.time()
+                if now - last_progress_log >= 20:
+                    logger.info("上传传输中: %s (检测到进度条或上传提示，浏览器正在发包)", file_name)
+                    last_progress_log = now
+                page.wait_for_timeout(5000)
+                continue
+
             if _name_visible():
                 last_seen_name_ts = time.time()
                 elapsed = int(time.time() - upload_start_ts)
                 logger.info("检测到云端列表出现文件名: %s (已等待 %ss)", file_name, elapsed)
 
-                # 大文件在刚触发上传后的短时间内，文件名可能先出现在临时列表中，不能立即判定成功。
-                if is_large_file and elapsed < 90:
-                    logger.info("大文件上传保护：出现文件名但等待时长不足90秒，继续观察。")
+                # 大文件网络传输需要时间，即使 UI 上传提示消失，也再给一定缓冲
+                if is_large_file and elapsed < 60:
+                    logger.info("大文件上传保护：等待时长不足60秒，继续观察。")
                     page.wait_for_timeout(5000)
                     continue
 
@@ -401,6 +433,8 @@ def _upload_one_file(page, file_path: Path) -> None:
                 confirm_rounds = 5 if is_large_file else 4
                 for i in range(confirm_rounds):
                     page.wait_for_timeout(2000)
+                    if _is_uploading_ui():
+                        break
                     if _name_visible():
                         stable_seen += 1
                         if stable_seen >= 2:
