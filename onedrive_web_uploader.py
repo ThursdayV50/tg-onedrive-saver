@@ -422,15 +422,19 @@ def _upload_one_file(page, file_path: Path) -> None:
                 elapsed = int(time.time() - upload_start_ts)
                 logger.info("检测到云端列表出现文件名: %s (已等待 %ss)", file_name, elapsed)
 
-                # 大文件网络传输需要时间，即使 UI 上传提示消失，也再给一定缓冲
+                # 网络传输需要时间，即使 UI 上传提示消失，也再给一定缓冲
                 if is_large_file and elapsed < 60:
                     logger.info("大文件上传保护：等待时长不足60秒，继续观察。")
                     page.wait_for_timeout(5000)
                     continue
+                if (not is_large_file) and elapsed < 15:
+                    logger.info("小文件上传保护：等待时长不足15秒，继续观察。")
+                    page.wait_for_timeout(3000)
+                    continue
 
                 # 稳定确认：避免刚触发上传就 reload 导致列表瞬时丢失，改为多次采样确认。
                 stable_seen = 0
-                confirm_rounds = 5 if is_large_file else 4
+                confirm_rounds = 4 if is_large_file else 3
                 for i in range(confirm_rounds):
                     page.wait_for_timeout(2000)
                     if _is_uploading_ui():
