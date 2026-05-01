@@ -28,6 +28,7 @@ TELEGRAM_BOT_API_BASE_FILE_URL = os.getenv(
     "TELEGRAM_BOT_API_BASE_FILE_URL", "http://telegram-bot-api:8081/file/bot"
 ).strip()
 TELEGRAM_LOCAL_MODE = os.getenv("TELEGRAM_LOCAL_MODE", "true").strip().lower() == "true"
+TELEGRAM_REQUEST_TIMEOUT = int(os.getenv("TELEGRAM_REQUEST_TIMEOUT", "1800"))
 
 ONEDRIVE_LOCAL_SYNC_DIR = os.getenv("ONEDRIVE_LOCAL_SYNC_DIR", "/sync").strip()
 ONEDRIVE_TARGET_DIR = os.getenv("ONEDRIVE_TARGET_DIR", "TelegramVideos").strip("/")
@@ -89,8 +90,20 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.info("开始处理视频: name=%s size=%s chat_id=%s", origin_name, file_size, chat_id)
 
     try:
-        tg_file = await context.bot.get_file(telegram_file_id)
-        await tg_file.download_to_drive(custom_path=local_target_path)
+        tg_file = await context.bot.get_file(
+            telegram_file_id,
+            read_timeout=TELEGRAM_REQUEST_TIMEOUT,
+            write_timeout=120,
+            connect_timeout=30,
+            pool_timeout=30,
+        )
+        await tg_file.download_to_drive(
+            custom_path=local_target_path,
+            read_timeout=TELEGRAM_REQUEST_TIMEOUT,
+            write_timeout=120,
+            connect_timeout=30,
+            pool_timeout=30,
+        )
         await update.message.reply_text(
             "下载完成，文件已加入 OneDrive 网页上传队列。\n"
             f"本地路径：{local_target_path}"
@@ -127,6 +140,10 @@ def main() -> None:
         .base_url(TELEGRAM_BOT_API_BASE_URL)
         .base_file_url(TELEGRAM_BOT_API_BASE_FILE_URL)
         .local_mode(TELEGRAM_LOCAL_MODE)
+        .read_timeout(TELEGRAM_REQUEST_TIMEOUT)
+        .write_timeout(120)
+        .connect_timeout(30)
+        .pool_timeout(30)
     )
     app = builder.build()
 
