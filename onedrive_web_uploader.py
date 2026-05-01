@@ -369,6 +369,8 @@ def _upload_one_file(page, file_path: Path) -> None:
     upload_start_ts = time.time()
     deadline = upload_start_ts + (7200 if is_large_file else 1800)
     last_progress_log = 0.0
+    last_seen_name_ts = 0.0
+    last_recover_ts = 0.0
     file_name = file_path.name
     file_name_short = file_name[:32]
     while time.time() < deadline:
@@ -377,6 +379,7 @@ def _upload_one_file(page, file_path: Path) -> None:
                 page.get_by_text(file_name, exact=False).count() > 0
                 or page.get_by_text(file_name_short, exact=False).count() > 0
             ):
+                last_seen_name_ts = time.time()
                 elapsed = int(time.time() - upload_start_ts)
                 logger.info("检测到云端列表出现文件名: %s (已等待 %ss)", file_name, elapsed)
 
@@ -406,11 +409,28 @@ def _upload_one_file(page, file_path: Path) -> None:
         now = time.time()
         if now - last_progress_log >= 20:
             logger.info(
-                "上传确认中: %s（等待页面出现文件名，%s）",
+                "上传确认中: %s（等待页面出现文件名，%s，url=%s）",
                 file_name,
                 "大文件模式" if is_large_file else "普通模式",
+                page.url,
             )
             last_progress_log = now
+
+        # 若之前见过文件名，但随后长期看不到，尝试重新回到文件页继续确认，避免卡在非目标页面。
+        if (
+            is_large_file
+            and last_seen_name_ts > 0
+            and (now - last_seen_name_ts) >= 120
+            and (now - last_recover_ts) >= 60
+        ):
+            try:
+                logger.info("长时间未再次匹配文件名，尝试重新定位文件页面后继续确认。")
+                _ensure_files_page(page)
+                page.wait_for_timeout(1500)
+            except Exception as exc:
+                logger.warning("重新定位文件页失败，继续等待: %s", exc)
+            last_recover_ts = now
+
         page.wait_for_timeout(3000)
         # 大文件确认阶段降低刷新频率，避免干扰浏览器上传流程
         if is_large_file and int(now) % 60 < 3:
