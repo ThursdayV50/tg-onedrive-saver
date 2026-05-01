@@ -373,12 +373,16 @@ def _upload_one_file(page, file_path: Path) -> None:
     last_recover_ts = 0.0
     file_name = file_path.name
     file_name_short = file_name[:32]
+
+    def _name_visible() -> bool:
+        return (
+            page.get_by_text(file_name, exact=False).count() > 0
+            or page.get_by_text(file_name_short, exact=False).count() > 0
+        )
+
     while time.time() < deadline:
         try:
-            if (
-                page.get_by_text(file_name, exact=False).count() > 0
-                or page.get_by_text(file_name_short, exact=False).count() > 0
-            ):
+            if _name_visible():
                 last_seen_name_ts = time.time()
                 elapsed = int(time.time() - upload_start_ts)
                 logger.info("检测到云端列表出现文件名: %s (已等待 %ss)", file_name, elapsed)
@@ -389,20 +393,31 @@ def _upload_one_file(page, file_path: Path) -> None:
                     page.wait_for_timeout(5000)
                     continue
 
-                # 二次确认：等待后刷新页面，确认文件名仍然存在，降低误判删除风险。
-                page.wait_for_timeout(3000 if is_large_file else 1500)
-                try:
-                    page.reload(wait_until="domcontentloaded")
-                    page.wait_for_timeout(2500 if is_large_file else 1200)
-                except Exception:
-                    pass
+                # 稳定确认：避免刚触发上传就 reload 导致列表瞬时丢失，改为多次采样确认。
+                stable_seen = 0
+                confirm_rounds = 5 if is_large_file else 4
+                for i in range(confirm_rounds):
+                    page.wait_for_timeout(2000)
+                    if _name_visible():
+                        stable_seen += 1
+                        if stable_seen >= 2:
+                            logger.info("上传确认通过（多次可见）: %s", file_name)
+                            return
+                    else:
+                        stable_seen = 0
 
-                if (
-                    page.get_by_text(file_name, exact=False).count() > 0
-                    or page.get_by_text(file_name_short, exact=False).count() > 0
-                ):
-                    logger.info("上传确认通过（刷新后仍可见）: %s", file_name)
-                    return
+                    # 大文件低频刷新；普通文件仅在最后一轮兜底刷新一次。
+                    should_reload = False
+                    if is_large_file and i in (2, 4):
+                        should_reload = True
+                    if (not is_large_file) and i == confirm_rounds - 1:
+                        should_reload = True
+                    if should_reload:
+                        try:
+                            page.reload(wait_until="domcontentloaded")
+                            page.wait_for_timeout(1200)
+                        except Exception:
+                            pass
         except Exception:
             pass
 
