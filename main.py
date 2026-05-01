@@ -1,7 +1,9 @@
 import logging
 import os
+import asyncio
 from datetime import datetime
 from pathlib import Path
+from urllib.request import urlopen
 
 from telegram import Update
 from telegram.ext import (
@@ -27,6 +29,7 @@ TELEGRAM_BOT_API_BASE_URL = os.getenv(
 TELEGRAM_BOT_API_BASE_FILE_URL = os.getenv(
     "TELEGRAM_BOT_API_BASE_FILE_URL", "http://telegram-bot-api:8081/file/bot"
 ).strip()
+TELEGRAM_BOT_API_ORIGIN = os.getenv("TELEGRAM_BOT_API_ORIGIN", "http://telegram-bot-api:8081").strip()
 TELEGRAM_LOCAL_MODE = os.getenv("TELEGRAM_LOCAL_MODE", "true").strip().lower() == "true"
 TELEGRAM_REQUEST_TIMEOUT = int(os.getenv("TELEGRAM_REQUEST_TIMEOUT", "1800"))
 
@@ -51,6 +54,19 @@ def check_allowed_chat(chat_id: int) -> bool:
     except ValueError:
         logger.warning("ALLOWED_CHAT_ID 不是有效整数，已忽略限制。")
         return True
+
+
+def _download_from_local_bot_api(file_path: str, local_target_path: str) -> None:
+    url = f"{TELEGRAM_BOT_API_ORIGIN}{file_path}"
+    with urlopen(url, timeout=TELEGRAM_REQUEST_TIMEOUT) as resp:  # nosec B310
+        if resp.status != 200:
+            raise RuntimeError(f"下载失败，HTTP {resp.status}")
+        with open(local_target_path, "wb") as f:
+            while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -97,13 +113,19 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             connect_timeout=30,
             pool_timeout=30,
         )
-        await tg_file.download_to_drive(
-            custom_path=local_target_path,
-            read_timeout=TELEGRAM_REQUEST_TIMEOUT,
-            write_timeout=120,
-            connect_timeout=30,
-            pool_timeout=30,
-        )
+        if tg_file.file_path and tg_file.file_path.startswith("/file/"):
+            # 本地 Bot API 在 local mode 可能返回绝对 file 路径，直接走原始 URL 下载更稳。
+            await asyncio.to_thread(
+                _download_from_local_bot_api, tg_file.file_path, local_target_path
+            )
+        else:
+            await tg_file.download_to_drive(
+                custom_path=local_target_path,
+                read_timeout=TELEGRAM_REQUEST_TIMEOUT,
+                write_timeout=120,
+                connect_timeout=30,
+                pool_timeout=30,
+            )
         await update.message.reply_text(
             "下载完成，文件已加入 OneDrive 网页上传队列。\n"
             f"本地路径：{local_target_path}"
