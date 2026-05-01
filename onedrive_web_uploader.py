@@ -146,15 +146,41 @@ def _try_upload_by_button(page, file_path: Path) -> bool:
     ]
     for sel in text_selectors:
         try:
-            if page.locator(sel).count() == 0:
+            text_node = page.locator(sel).first
+            if text_node.count() == 0:
                 continue
             with page.expect_file_chooser(timeout=3000) as fc_info:
-                page.locator(sel).first.click()
+                # 文本节点常为 generic，不可直接触发上传，优先点击其父级可点击菜单项
+                clickable = text_node.locator(
+                    "xpath=ancestor::*[contains(@class,'ms-ContextualMenu-link')][1]"
+                )
+                if clickable.count() > 0:
+                    clickable.click()
+                else:
+                    text_node.click()
             chooser = fc_info.value
             chooser.set_files(str(file_path))
             return True
         except Exception:
-            pass
+            # 有些 UI 不弹 file chooser，但会在 DOM 中动态插入 input[type=file]
+            try:
+                text_node = page.locator(sel).first
+                if text_node.count() == 0:
+                    continue
+                clickable = text_node.locator(
+                    "xpath=ancestor::*[contains(@class,'ms-ContextualMenu-link')][1]"
+                )
+                if clickable.count() > 0:
+                    clickable.click()
+                else:
+                    text_node.click()
+                page.wait_for_timeout(800)
+                dynamic_input = page.locator('input[type="file"]')
+                if dynamic_input.count() > 0:
+                    dynamic_input.last.set_input_files(str(file_path))
+                    return True
+            except Exception:
+                pass
 
     return False
 
