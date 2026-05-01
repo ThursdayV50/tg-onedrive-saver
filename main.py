@@ -2,6 +2,7 @@ import logging
 import os
 import asyncio
 import shutil
+import json
 from datetime import datetime
 from pathlib import Path
 from urllib.request import urlopen
@@ -140,6 +141,17 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 write_timeout=120,
                 connect_timeout=30,
                 pool_timeout=30,
+            )
+        meta_path = f"{local_target_path}.meta.json"
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "chat_id": chat_id,
+                    "origin_name": origin_name,
+                    "queued_path": local_target_path,
+                },
+                f,
+                ensure_ascii=False,
             )
         await update.message.reply_text(
             "下载完成，文件已加入 OneDrive 网页上传队列。\n"

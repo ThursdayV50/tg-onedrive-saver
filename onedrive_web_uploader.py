@@ -2,8 +2,10 @@ import logging
 import os
 import re
 import time
+import json
 from pathlib import Path
 
+import requests
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
@@ -27,6 +29,8 @@ SCAN_INTERVAL_SECONDS = int(os.getenv("ONEDRIVE_SCAN_INTERVAL_SECONDS", "15"))
 AUTH_CHECK_INTERVAL_SECONDS = int(os.getenv("ONEDRIVE_AUTH_CHECK_INTERVAL_SECONDS", "600"))
 HEADLESS = os.getenv("ONEDRIVE_HEADLESS", "true").strip().lower() == "true"
 DEBUG_DIR = Path(os.getenv("ONEDRIVE_DEBUG_DIR", "/data/debug")).resolve()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_BOT_API_ORIGIN = os.getenv("TELEGRAM_BOT_API_ORIGIN", "http://telegram-bot-api:8081").strip()
 
 SUPPORTED_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 
@@ -38,6 +42,45 @@ def _iter_pending_files() -> list[Path]:
     candidates = [p for p in QUEUE_ROOT.rglob("*") if p.is_file()]
     video_files = [p for p in candidates if p.suffix.lower() in SUPPORTED_SUFFIXES]
     return sorted(video_files, key=lambda p: p.stat().st_mtime)
+
+
+def _meta_path_for(file_path: Path) -> Path:
+    return file_path.with_name(f"{file_path.name}.meta.json")
+
+
+def _load_meta(file_path: Path) -> dict:
+    meta_path = _meta_path_for(file_path)
+    if not meta_path.exists():
+        return {}
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _notify_upload_success(file_path: Path) -> None:
+    meta = _load_meta(file_path)
+    chat_id = meta.get("chat_id")
+    if not chat_id or not TELEGRAM_BOT_TOKEN:
+        return
+
+    origin_name = meta.get("origin_name", file_path.name)
+    text = f"OneDrive 上传完成: {origin_name}"
+    url = f"{TELEGRAM_BOT_API_ORIGIN}/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        resp = requests.post(url, data={"chat_id": chat_id, "text": text}, timeout=15)
+        if resp.status_code != 200:
+            logger.warning("上传完成通知发送失败: HTTP %s %s", resp.status_code, resp.text)
+    except Exception as exc:
+        logger.warning("上传完成通知发送异常: %s", exc)
+
+
+def _cleanup_meta(file_path: Path) -> None:
+    meta_path = _meta_path_for(file_path)
+    try:
+        meta_path.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _save_debug_snapshot(page, reason: str) -> None:
@@ -397,7 +440,9 @@ def run() -> None:
             for file_path in pending:
                 try:
                     _upload_one_file(page, file_path)
+                    _notify_upload_success(file_path)
                     file_path.unlink(missing_ok=True)
+                    _cleanup_meta(file_path)
                     logger.info("上传完成并删除本地文件: %s", file_path)
                 except Exception as exc:
                     logger.exception("上传失败，稍后重试: %s", exc)

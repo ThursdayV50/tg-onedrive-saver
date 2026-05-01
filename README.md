@@ -38,7 +38,7 @@ docker compose logs -f
 1. 在 Telegram 打开机器人并发送 `/start`
 2. 发送视频（或视频文件）
 3. 机器人提示“已加入网页上传队列”
-4. `onedrive-web-uploader` 上传成功后会自动删本地队列文件
+4. `onedrive-web-uploader` 上传成功后会自动删本地队列文件，并通过机器人回发“上传完成”通知
 
 ## 5. 查看状态
 
