@@ -1,6 +1,7 @@
 import logging
 import os
 import asyncio
+import shutil
 from datetime import datetime
 from pathlib import Path
 from urllib.request import urlopen
@@ -57,6 +58,10 @@ def check_allowed_chat(chat_id: int) -> bool:
 
 
 def _download_from_local_bot_api(file_path: str, local_target_path: str) -> None:
+    if file_path.startswith("/") and os.path.exists(file_path):
+        shutil.copy2(file_path, local_target_path)
+        return
+
     if file_path.startswith("http://") or file_path.startswith("https://"):
         url = file_path
     elif file_path.startswith("/"):

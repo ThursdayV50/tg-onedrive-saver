@@ -39,3 +39,4 @@ services:
       - ONEDRIVE_LOCAL_SYNC_DIR=/sync
     volumes:
       - ./data/queue:/sync
+      - ./data/tg-bot-api:/file
