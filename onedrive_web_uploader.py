@@ -24,6 +24,7 @@ ONEDRIVE_FILES_URL = os.getenv(
     "ONEDRIVE_FILES_URL", "https://g1479169422163-my.sharepoint.com/my"
 ).strip()
 SCAN_INTERVAL_SECONDS = int(os.getenv("ONEDRIVE_SCAN_INTERVAL_SECONDS", "15"))
+AUTH_CHECK_INTERVAL_SECONDS = int(os.getenv("ONEDRIVE_AUTH_CHECK_INTERVAL_SECONDS", "600"))
 HEADLESS = os.getenv("ONEDRIVE_HEADLESS", "true").strip().lower() == "true"
 DEBUG_DIR = Path(os.getenv("ONEDRIVE_DEBUG_DIR", "/data/debug")).resolve()
 
@@ -391,17 +392,24 @@ def run() -> None:
             args=["--disable-dev-shm-usage", "--no-sandbox"],
         )
         page = context.pages[0] if context.pages else context.new_page()
+        last_auth_check_ts = 0.0
 
         while True:
-            try:
-                _login_if_needed(page)
-                _ensure_files_page(page)
-            except Exception as exc:
-                logger.exception("登录或页面初始化失败，稍后重试: %s", exc)
-                time.sleep(10)
-                continue
-
             pending = _iter_pending_files()
+            now = time.time()
+            need_auth_check = (now - last_auth_check_ts) >= AUTH_CHECK_INTERVAL_SECONDS
+
+            # 仅在定时周期到达时进行登录态检查，减少无效日志
+            if need_auth_check:
+                try:
+                    _login_if_needed(page)
+                    _ensure_files_page(page)
+                    last_auth_check_ts = now
+                except Exception as exc:
+                    logger.exception("登录或页面初始化失败，稍后重试: %s", exc)
+                    time.sleep(10)
+                    continue
+
             if not pending:
                 time.sleep(SCAN_INTERVAL_SECONDS)
                 continue
