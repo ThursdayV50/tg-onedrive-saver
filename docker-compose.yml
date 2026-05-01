@@ -8,9 +8,9 @@ services:
     environment:
       - TELEGRAM_API_ID=${TELEGRAM_API_ID}
       - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
-      - EXTRA_ARGS=--local --http-port=8081 --dir=/var/lib/telegram-bot-api
+      - EXTRA_ARGS=--local --http-port=8081
     volumes:
-      - ./data/tg-bot-api:/var/lib/telegram-bot-api
+      - ./data/tg-bot-api:/file
 
   onedrive-web-uploader:
     build: .
