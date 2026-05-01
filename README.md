@@ -37,7 +37,7 @@
 
 ```bash
 git clone git@github.com:ThursdayV50/tg-onedrive-saver.git
-cd <仓库目录>
+cd tg-onedrive-saver
 ```
 
 ### 2.2 准备配置文件
