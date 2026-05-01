@@ -57,7 +57,17 @@ def check_allowed_chat(chat_id: int) -> bool:
 
 
 def _download_from_local_bot_api(file_path: str, local_target_path: str) -> None:
-    url = f"{TELEGRAM_BOT_API_ORIGIN}{file_path}"
+    if file_path.startswith("http://") or file_path.startswith("https://"):
+        url = file_path
+    elif file_path.startswith("/"):
+        url = f"{TELEGRAM_BOT_API_ORIGIN}{file_path}"
+    else:
+        # 兼容返回相对路径的情况
+        url = (
+            f"{TELEGRAM_BOT_API_BASE_FILE_URL}{TELEGRAM_BOT_TOKEN}/"
+            f"{file_path.lstrip('/')}"
+        )
+
     with urlopen(url, timeout=TELEGRAM_REQUEST_TIMEOUT) as resp:  # nosec B310
         if resp.status != 200:
             raise RuntimeError(f"下载失败，HTTP {resp.status}")
@@ -113,8 +123,8 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             connect_timeout=30,
             pool_timeout=30,
         )
-        if tg_file.file_path and tg_file.file_path.startswith("/file/"):
-            # 本地 Bot API 在 local mode 可能返回绝对 file 路径，直接走原始 URL 下载更稳。
+        if tg_file.file_path:
+            # 优先使用 getFile 返回的 file_path 直链下载，避免 SDK 对 base_file_url 的二次拼接导致 404。
             await asyncio.to_thread(
                 _download_from_local_bot_api, tg_file.file_path, local_target_path
             )
