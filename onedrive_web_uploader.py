@@ -20,6 +20,9 @@ LOGIN_EMAIL = os.getenv("ONEDRIVE_LOGIN_EMAIL", "").strip()
 LOGIN_PASSWORD = os.getenv("ONEDRIVE_LOGIN_PASSWORD", "").strip()
 PROFILE_DIR = os.getenv("ONEDRIVE_BROWSER_PROFILE_DIR", "/data/browser-profile").strip()
 ONEDRIVE_WEB_URL = os.getenv("ONEDRIVE_WEB_URL", "https://onedrive.live.com").strip()
+ONEDRIVE_FILES_URL = os.getenv(
+    "ONEDRIVE_FILES_URL", "https://onedrive.live.com/?id=root&qt=allmyfiles"
+).strip()
 SCAN_INTERVAL_SECONDS = int(os.getenv("ONEDRIVE_SCAN_INTERVAL_SECONDS", "15"))
 HEADLESS = os.getenv("ONEDRIVE_HEADLESS", "true").strip().lower() == "true"
 DEBUG_DIR = Path(os.getenv("ONEDRIVE_DEBUG_DIR", "/data/debug")).resolve()
@@ -84,6 +87,51 @@ def _login_if_needed(page) -> None:
     logger.info("登录流程执行完毕，等待进入 OneDrive。")
     page.goto(ONEDRIVE_WEB_URL, wait_until="domcontentloaded")
     page.wait_for_timeout(2000)
+
+
+def _ensure_files_page(page) -> None:
+    candidates = [
+        ONEDRIVE_FILES_URL,
+        "https://www.office.com/launch/onedrive",
+        "https://onedrive.live.com/?v=files",
+    ]
+    for url in candidates:
+        try:
+            page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
+            current = page.url.lower()
+            if "microsoft.com/microsoft-365/onedrive/online-cloud-storage" in current:
+                # 营销页时尝试点“登录/转到OneDrive”
+                for btn_pat in [
+                    re.compile(r"sign in|login|log in|登录", re.IGNORECASE),
+                    re.compile(r"go to onedrive|open onedrive|转到 onedrive|打开 onedrive", re.IGNORECASE),
+                ]:
+                    try:
+                        btn = page.get_by_role("link", name=btn_pat)
+                        if btn.count() > 0:
+                            btn.first.click()
+                            page.wait_for_timeout(2500)
+                            break
+                    except Exception:
+                        pass
+            # 能看到上传控件或新建按钮，视为已进入文件页
+            if page.locator('input[type="file"]').count() > 0:
+                logger.info("已进入文件页面（检测到 file input）: %s", page.url)
+                return
+            if page.get_by_role("button", name=re.compile(r"new|新建", re.IGNORECASE)).count() > 0:
+                logger.info("已进入文件页面（检测到新建按钮）: %s", page.url)
+                return
+            if "sharepoint.com" in page.url.lower() or "onedrive.live.com" in page.url.lower():
+                logger.info("已进入 OneDrive/SharePoint 页面: %s", page.url)
+                return
+        except Exception:
+            continue
+
+    _save_debug_snapshot(page, "not_in_files_page")
+    raise RuntimeError(
+        f"未能进入 OneDrive 文件页面，当前页面: {page.url}。"
+        "请检查 ONEDRIVE_FILES_URL 或账号权限。"
+    )
 
 
 def _try_upload_by_input(page, file_path: Path) -> bool:
@@ -187,8 +235,7 @@ def _try_upload_by_button(page, file_path: Path) -> bool:
 
 def _upload_one_file(page, file_path: Path) -> None:
     logger.info("准备上传文件: %s", file_path)
-    page.goto(ONEDRIVE_WEB_URL, wait_until="domcontentloaded")
-    page.wait_for_timeout(2000)
+    _ensure_files_page(page)
     logger.info("已进入 OneDrive 页面: %s", page.url)
 
     uploaded = _try_upload_by_input(page, file_path)
@@ -242,6 +289,7 @@ def run() -> None:
         page = context.pages[0] if context.pages else context.new_page()
 
         _login_if_needed(page)
+        _ensure_files_page(page)
 
         while True:
             pending = _iter_pending_files()
