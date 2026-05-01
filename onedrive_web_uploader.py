@@ -271,9 +271,11 @@ def _upload_one_file(page, file_path: Path) -> None:
 
     logger.info("已触发网页上传: %s", file_path.name)
 
-    # 轮询确认页面上出现文件名，作为上传成功信号
-    deadline = time.time() + 3600
+    # 轮询确认上传结果：文件名命中 / 成功提示 / 上传进度结束
+    deadline = time.time() + 1200
     last_progress_log = 0.0
+    seen_uploading = False
+    no_progress_rounds = 0
     while time.time() < deadline:
         try:
             if page.get_by_text(file_path.name, exact=False).count() > 0:
@@ -281,14 +283,57 @@ def _upload_one_file(page, file_path: Path) -> None:
                 return
         except Exception:
             pass
+
+        # OneDrive 多语言成功提示（toast）检测
+        success_patterns = [
+            "已上传",
+            "上传完成",
+            "uploaded",
+            "upload complete",
+            "all done",
+        ]
+        for text in success_patterns:
+            try:
+                if page.get_by_text(text, exact=False).count() > 0:
+                    logger.info("检测到上传成功提示: %s", text)
+                    return
+            except Exception:
+                pass
+
+        # 上传进行中状态检测
+        uploading_now = False
+        uploading_patterns = ["正在上传", "上传中", "uploading", "upload in progress"]
+        for text in uploading_patterns:
+            try:
+                if page.get_by_text(text, exact=False).count() > 0:
+                    uploading_now = True
+                    break
+            except Exception:
+                pass
+        try:
+            if page.locator('[role="progressbar"]').count() > 0:
+                uploading_now = True
+        except Exception:
+            pass
+
+        if uploading_now:
+            seen_uploading = True
+            no_progress_rounds = 0
+        else:
+            if seen_uploading:
+                no_progress_rounds += 1
+                if no_progress_rounds >= 3:
+                    logger.info("检测到上传进度结束，判定上传完成: %s", file_path.name)
+                    return
+
         now = time.time()
         if now - last_progress_log >= 20:
             logger.info("上传确认中: %s（等待页面出现文件名）", file_path.name)
             last_progress_log = now
         page.wait_for_timeout(3000)
-        page.reload(wait_until="domcontentloaded")
 
-    raise RuntimeError(f"上传超时，未在网页中确认文件出现: {file_path.name}")
+    _save_debug_snapshot(page, "upload_confirm_timeout")
+    raise RuntimeError(f"上传超时，未确认成功: {file_path.name}")
 
 
 def run() -> None:
