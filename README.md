@@ -36,7 +36,7 @@
 ### 2.1 克隆并进入项目
 
 ```bash
-git clone <你的仓库地址>
+git clone git@github.com:ThursdayV50/tg-onedrive-saver.git
 cd <仓库目录>
 ```
 
