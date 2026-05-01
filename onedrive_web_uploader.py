@@ -314,69 +314,49 @@ def _upload_one_file(page, file_path: Path) -> None:
 
     logger.info("已触发网页上传: %s", file_path.name)
 
-    # 轮询确认上传结果：文件名命中 / 成功提示 / 上传进度结束
-    deadline = time.time() + 1200
+    # 保守确认策略：只在页面中明确看到文件名时才视为上传成功。
+    # 大文件给更长确认窗口，避免过早误判后删除本地文件。
+    file_size = file_path.stat().st_size
+    is_large_file = file_size >= 200 * 1024 * 1024
+    deadline = time.time() + (7200 if is_large_file else 1800)
     last_progress_log = 0.0
-    seen_uploading = False
-    no_progress_rounds = 0
+    file_name = file_path.name
+    file_name_short = file_name[:32]
     while time.time() < deadline:
         try:
-            if page.get_by_text(file_path.name, exact=False).count() > 0:
-                logger.info("检测到云端列表出现文件名: %s", file_path.name)
-                return
+            if (
+                page.get_by_text(file_name, exact=False).count() > 0
+                or page.get_by_text(file_name_short, exact=False).count() > 0
+            ):
+                logger.info("检测到云端列表出现文件名: %s", file_name)
+                # 二次确认，降低短暂渲染造成的误判风险
+                page.wait_for_timeout(1500)
+                if (
+                    page.get_by_text(file_name, exact=False).count() > 0
+                    or page.get_by_text(file_name_short, exact=False).count() > 0
+                ):
+                    return
         except Exception:
             pass
-
-        # OneDrive 多语言成功提示（toast）检测
-        success_patterns = [
-            "已上传",
-            "上传完成",
-            "uploaded",
-            "upload complete",
-            "all done",
-        ]
-        for text in success_patterns:
-            try:
-                if page.get_by_text(text, exact=False).count() > 0:
-                    logger.info("检测到上传成功提示: %s", text)
-                    return
-            except Exception:
-                pass
-
-        # 上传进行中状态检测
-        uploading_now = False
-        uploading_patterns = ["正在上传", "上传中", "uploading", "upload in progress"]
-        for text in uploading_patterns:
-            try:
-                if page.get_by_text(text, exact=False).count() > 0:
-                    uploading_now = True
-                    break
-            except Exception:
-                pass
-        try:
-            if page.locator('[role="progressbar"]').count() > 0:
-                uploading_now = True
-        except Exception:
-            pass
-
-        if uploading_now:
-            seen_uploading = True
-            no_progress_rounds = 0
-        else:
-            if seen_uploading:
-                no_progress_rounds += 1
-                if no_progress_rounds >= 3:
-                    logger.info("检测到上传进度结束，判定上传完成: %s", file_path.name)
-                    return
 
         now = time.time()
         if now - last_progress_log >= 20:
-            logger.info("上传确认中: %s（等待页面出现文件名）", file_path.name)
+            logger.info(
+                "上传确认中: %s（等待页面出现文件名，%s）",
+                file_name,
+                "大文件模式" if is_large_file else "普通模式",
+            )
             last_progress_log = now
         page.wait_for_timeout(3000)
+        # 大文件确认阶段降低刷新频率，避免干扰浏览器上传流程
+        if is_large_file and int(now) % 60 < 3:
+            try:
+                page.reload(wait_until="domcontentloaded")
+            except Exception:
+                pass
 
     _save_debug_snapshot(page, "upload_confirm_timeout")
-    raise RuntimeError(f"上传超时，未确认成功: {file_path.name}")
+    raise RuntimeError(f"上传超时，未确认文件出现在云端列表: {file_name}")
 
 
 def run() -> None:

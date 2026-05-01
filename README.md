@@ -69,6 +69,11 @@ ls -lh data/debug
 - 查看日志是否出现“未找到文件上传控件”
 - 检查 `data/debug` 目录中的截图与 HTML，确认当前页面是否为 OneDrive 文件页
 
+### 大文件上传后看不到文件
+
+- 新版本采用“保守删除策略”：仅在网页列表中确认看到文件名后才删除本地文件
+- 若超时未确认，文件会保留在 `data/queue/TelegramVideos`，不会被误删
+
 ### 机器人提示 File is too big
 
 - 确认 `telegram-bot-api` 容器已启动
