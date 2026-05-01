@@ -13,7 +13,9 @@ services:
       - ./data/tg-bot-api:/file
 
   onedrive-web-uploader:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.uploader
     container_name: onedrive-web-uploader
     restart: unless-stopped
     env_file:
@@ -25,7 +27,9 @@ services:
       - ./data/debug:/data/debug
 
   tg-onedrive-bot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
     container_name: tg-onedrive-bot
     restart: unless-stopped
     depends_on:
