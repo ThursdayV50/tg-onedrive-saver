@@ -21,7 +21,7 @@ LOGIN_PASSWORD = os.getenv("ONEDRIVE_LOGIN_PASSWORD", "").strip()
 PROFILE_DIR = os.getenv("ONEDRIVE_BROWSER_PROFILE_DIR", "/data/browser-profile").strip()
 ONEDRIVE_WEB_URL = os.getenv("ONEDRIVE_WEB_URL", "https://onedrive.live.com").strip()
 ONEDRIVE_FILES_URL = os.getenv(
-    "ONEDRIVE_FILES_URL", "https://onedrive.live.com/?id=root&qt=allmyfiles"
+    "ONEDRIVE_FILES_URL", "https://g1479169422163-my.sharepoint.com/my"
 ).strip()
 SCAN_INTERVAL_SECONDS = int(os.getenv("ONEDRIVE_SCAN_INTERVAL_SECONDS", "15"))
 HEADLESS = os.getenv("ONEDRIVE_HEADLESS", "true").strip().lower() == "true"
