@@ -22,6 +22,7 @@ services:
     volumes:
       - ./data/queue:/sync
       - ./data/browser-profile:/data/browser-profile
+      - ./data/debug:/data/debug
 
   tg-onedrive-bot:
     build: .

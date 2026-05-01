@@ -189,10 +189,15 @@ def _upload_one_file(page, file_path: Path) -> None:
     logger.info("准备上传文件: %s", file_path)
     page.goto(ONEDRIVE_WEB_URL, wait_until="domcontentloaded")
     page.wait_for_timeout(2000)
+    logger.info("已进入 OneDrive 页面: %s", page.url)
 
     uploaded = _try_upload_by_input(page, file_path)
+    if uploaded:
+        logger.info("通过 input[type=file] 触发上传。")
     if not uploaded:
         uploaded = _try_upload_by_button(page, file_path)
+        if uploaded:
+            logger.info("通过按钮/菜单触发上传。")
     if not uploaded:
         _save_debug_snapshot(page, "upload_control_not_found")
         raise RuntimeError(
@@ -204,6 +209,7 @@ def _upload_one_file(page, file_path: Path) -> None:
 
     # 轮询确认页面上出现文件名，作为上传成功信号
     deadline = time.time() + 3600
+    last_progress_log = 0.0
     while time.time() < deadline:
         try:
             if page.get_by_text(file_path.name, exact=False).count() > 0:
@@ -211,6 +217,10 @@ def _upload_one_file(page, file_path: Path) -> None:
                 return
         except Exception:
             pass
+        now = time.time()
+        if now - last_progress_log >= 20:
+            logger.info("上传确认中: %s（等待页面出现文件名）", file_path.name)
+            last_progress_log = now
         page.wait_for_timeout(3000)
         page.reload(wait_until="domcontentloaded")
 
