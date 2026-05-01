@@ -1,45 +1,53 @@
-# Telegram 视频自动上传 OneDrive（极简部署）
+# Telegram 大视频自动上传 OneDrive（无需 rclone）
 
-给机器人发视频后，程序会自动下载并上传到 OneDrive（基于 `rclone`）。
+这个版本使用：
+- 自建 `telegram-bot-api`（local mode）下载大视频
+- Microsoft Graph API 上传到 OneDrive（网页端可直接查看）
 
-## 1. 一次性部署（复制即用）
+## 1. 一次性部署
 
 ```bash
-git clone git@github.com:ThursdayV50/tg-onedrive-saver.git
+git clone https://github.com/ThursdayV50/tg-onedrive-saver.git
 cd tg-onedrive-saver
 cp .env.example .env
 mkdir -p data
 ```
 
-编辑 `.env`，至少改这两项：
+## 2. 填写 `.env`
+
+至少填写这 4 项：
 
 ```env
-TELEGRAM_BOT_TOKEN=你的_bot_token
-RCLONE_REMOTE=onedrive
+TELEGRAM_BOT_TOKEN=你的BotFather机器人token
+TELEGRAM_API_ID=你的telegram_api_id
+TELEGRAM_API_HASH=你的telegram_api_hash
+MS_CLIENT_ID=你的微软应用client_id
 ```
 
-首次授权 OneDrive（按向导操作）：
+说明：
+- `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` 在 [my.telegram.org](https://my.telegram.org) 创建应用获取
+- `MS_CLIENT_ID` 在 Azure / Entra 应用注册中获取
 
-```bash
-docker compose run --rm tg-onedrive-bot rclone --config /data/rclone.conf config
-```
-
-启动：
+## 3. 启动
 
 ```bash
 docker compose up -d --build
 docker compose logs -f
 ```
 
-## 2. 怎么用
+首次启动会在日志中提示：
+- 打开 `https://microsoft.com/devicelogin`
+- 输入设备码完成授权
 
-1. 在 Telegram 找到你的机器人，发送 `/start`
-2. 发送视频（或以文件形式发送视频）
-3. 收到“上传成功”消息即完成
+授权成功后，机器人会自动继续运行。
 
-默认上传目录是 OneDrive 的 `TelegramVideos`（可在 `.env` 改 `ONEDRIVE_TARGET_DIR`）。
+## 4. 使用
 
-## 3. 常用命令
+1. 在 Telegram 打开机器人，发送 `/start`
+2. 发送视频（或视频文件）
+3. 机器人回复 OneDrive 网页链接或保存路径
+
+## 5. 常用命令
 
 ```bash
 docker compose logs -f
@@ -48,21 +56,20 @@ docker compose down
 docker compose up -d --build
 ```
 
-## 4. 最常见问题
+## 6. 常见问题
 
-### 找不到 rclone 配置
+### 报 `Invalid token`
 
-- 确认有文件：`./data/rclone.conf`
-- 没有就重新执行授权命令：
+- 去 `@BotFather` 重置 token
+- 更新 `.env` 的 `TELEGRAM_BOT_TOKEN`
+- 重启：`docker compose up -d --build`
 
-```bash
-docker compose run --rm tg-onedrive-bot rclone --config /data/rclone.conf config
-```
+### 上传失败提示微软授权错误
 
-### 想只允许自己使用机器人
+- 查看日志是否出现设备码
+- 重新完成一次设备码登录
 
-在 `.env` 增加：
+### 文件在 OneDrive 网页看不到
 
-```env
-ALLOWED_CHAT_ID=你的Telegram聊天ID
-```
+- 检查 `ONEDRIVE_TARGET_DIR` 配置
+- 默认在 `TelegramVideos` 目录

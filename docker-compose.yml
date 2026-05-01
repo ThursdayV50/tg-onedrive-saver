@@ -1,11 +1,31 @@
 services:
+  telegram-bot-api:
+    image: ghcr.io/tdlib/telegram-bot-api:latest
+    container_name: telegram-bot-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - --api-id=${TELEGRAM_API_ID}
+      - --api-hash=${TELEGRAM_API_HASH}
+      - --http-port=8081
+      - --dir=/var/lib/telegram-bot-api
+      - --local
+    volumes:
+      - ./data/tg-bot-api:/var/lib/telegram-bot-api
+
   tg-onedrive-bot:
     build: .
     container_name: tg-onedrive-bot
     restart: unless-stopped
+    depends_on:
+      - telegram-bot-api
     env_file:
       - .env
     environment:
-      - RCLONE_CONFIG_FILE=/data/rclone.conf
+      - MSAL_CACHE_FILE=/data/msal_token_cache.bin
+      - TELEGRAM_BOT_API_BASE_URL=http://telegram-bot-api:8081/bot
+      - TELEGRAM_BOT_API_BASE_FILE_URL=http://telegram-bot-api:8081/file/bot
+      - TELEGRAM_LOCAL_MODE=false
     volumes:
       - ./data:/data
