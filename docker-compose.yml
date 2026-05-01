@@ -14,18 +14,34 @@ services:
     volumes:
       - ./data/tg-bot-api:/var/lib/telegram-bot-api
 
+  onedrive:
+    image: driveone/onedrive:edge
+    container_name: onedrive-sync
+    restart: unless-stopped
+    command:
+      - --monitor
+      - --upload-only
+      - --remove-source-files
+    environment:
+      - ONEDRIVE_UID=${ONEDRIVE_UID:-1000}
+      - ONEDRIVE_GID=${ONEDRIVE_GID:-1000}
+    volumes:
+      - ./data/onedrive-conf:/onedrive/conf
+      - ./data/onedrive-sync:/onedrive/data
+
   tg-onedrive-bot:
     build: .
     container_name: tg-onedrive-bot
     restart: unless-stopped
     depends_on:
       - telegram-bot-api
+      - onedrive
     env_file:
       - .env
     environment:
-      - MSAL_CACHE_FILE=/data/msal_token_cache.bin
       - TELEGRAM_BOT_API_BASE_URL=http://telegram-bot-api:8081/bot
       - TELEGRAM_BOT_API_BASE_FILE_URL=http://telegram-bot-api:8081/file/bot
       - TELEGRAM_LOCAL_MODE=false
+      - ONEDRIVE_LOCAL_SYNC_DIR=/sync
     volumes:
-      - ./data:/data
+      - ./data/onedrive-sync:/sync
