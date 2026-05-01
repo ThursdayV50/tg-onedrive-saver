@@ -138,6 +138,24 @@ def _try_upload_by_button(page, file_path: Path) -> bool:
         except Exception:
             pass
 
+    # 针对 OneDrive 中文界面：菜单项可能是 span.ms-ContextualMenu-itemText，不带 role=menuitem
+    text_selectors = [
+        'span.ms-ContextualMenu-itemText:has-text("文件上传")',
+        'span.ms-ContextualMenu-itemText:has-text("上载文件")',
+        'span.ms-ContextualMenu-itemText:has-text("Upload files")',
+    ]
+    for sel in text_selectors:
+        try:
+            if page.locator(sel).count() == 0:
+                continue
+            with page.expect_file_chooser(timeout=3000) as fc_info:
+                page.locator(sel).first.click()
+            chooser = fc_info.value
+            chooser.set_files(str(file_path))
+            return True
+        except Exception:
+            pass
+
     return False
 
 
