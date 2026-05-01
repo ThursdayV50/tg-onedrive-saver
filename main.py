@@ -93,6 +93,71 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+# 使用后台任务并发下载，避免阻塞主消息循环
+async def _process_video_task(context: ContextTypes.DEFAULT_TYPE, chat_id: int, telegram_file_id: str, origin_name: str, file_size: int, local_target_path: str) -> None:
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            tg_file = await context.bot.get_file(
+                telegram_file_id,
+                read_timeout=TELEGRAM_REQUEST_TIMEOUT,
+                write_timeout=120,
+                connect_timeout=30,
+                pool_timeout=30,
+            )
+            if tg_file.file_path:
+                await asyncio.to_thread(
+                    _download_from_local_bot_api, tg_file.file_path, local_target_path
+                )
+            else:
+                await tg_file.download_to_drive(
+                    custom_path=local_target_path,
+                    read_timeout=TELEGRAM_REQUEST_TIMEOUT,
+                    write_timeout=120,
+                    connect_timeout=30,
+                    pool_timeout=30,
+                )
+            meta_path = f"{local_target_path}.meta.json"
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "chat_id": chat_id,
+                        "origin_name": origin_name,
+                        "queued_path": local_target_path,
+                    },
+                    f,
+                    ensure_ascii=False,
+                )
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"下载完成，文件已加入 OneDrive 网页上传队列。\n本地路径：{local_target_path}"
+            )
+            logger.info("文件已写入网页上传队列: %s", local_target_path)
+            break
+        except Exception as exc:
+            err_msg = str(exc)
+            logger.warning("处理视频失败 (尝试 %d/%d): %s", attempt, max_retries, err_msg)
+            if "temporarily unavailable" in err_msg and attempt < max_retries:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"文件 {origin_name} 暂时不可用，等待 15 秒后进行第 {attempt + 1} 次重试..."
+                )
+                await asyncio.sleep(15)
+                continue
+            
+            logger.exception("处理视频最终失败")
+            if "File is too big" in err_msg:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"下载失败：文件过大 ({origin_name})。请确认自建 API 正常运行。"
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"下载失败 ({origin_name})：{err_msg}"
+                )
+            break
+
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return
@@ -118,65 +183,15 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     local_target_path = build_storage_path(origin_name)
 
-    await update.message.reply_text("收到视频，开始下载并加入 OneDrive 网页上传队列...")
+    await update.message.reply_text(f"收到视频 {origin_name}，开始后台下载并加入上传队列...")
     logger.info("开始处理视频: name=%s size=%s chat_id=%s", origin_name, file_size, chat_id)
 
-    max_retries = 3
-    for attempt in range(1, max_retries + 1):
-        try:
-            tg_file = await context.bot.get_file(
-                telegram_file_id,
-                read_timeout=TELEGRAM_REQUEST_TIMEOUT,
-                write_timeout=120,
-                connect_timeout=30,
-                pool_timeout=30,
-            )
-            if tg_file.file_path:
-                # 优先使用 getFile 返回的 file_path 直链下载，避免 SDK 对 base_file_url 的二次拼接导致 404。
-                await asyncio.to_thread(
-                    _download_from_local_bot_api, tg_file.file_path, local_target_path
-                )
-            else:
-                await tg_file.download_to_drive(
-                    custom_path=local_target_path,
-                    read_timeout=TELEGRAM_REQUEST_TIMEOUT,
-                    write_timeout=120,
-                    connect_timeout=30,
-                    pool_timeout=30,
-                )
-            meta_path = f"{local_target_path}.meta.json"
-            with open(meta_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "chat_id": chat_id,
-                        "origin_name": origin_name,
-                        "queued_path": local_target_path,
-                    },
-                    f,
-                    ensure_ascii=False,
-                )
-            await update.message.reply_text(
-                "下载完成，文件已加入 OneDrive 网页上传队列。\n"
-                f"本地路径：{local_target_path}"
-            )
-            logger.info("文件已写入网页上传队列: %s", local_target_path)
-            break  # 成功则跳出重试循环
-        except Exception as exc:
-            err_msg = str(exc)
-            logger.warning("处理视频失败 (尝试 %d/%d): %s", attempt, max_retries, err_msg)
-            if "temporarily unavailable" in err_msg and attempt < max_retries:
-                await update.message.reply_text(f"文件暂时不可用，等待 15 秒后进行第 {attempt + 1} 次重试...")
-                await asyncio.sleep(15)
-                continue
-            
-            logger.exception("处理视频最终失败")
-            if "File is too big" in err_msg:
-                await update.message.reply_text(
-                    "下载失败：文件过大。请确认你正在使用自建 Telegram Bot API（local mode）并连接到本地 API 地址。"
-                )
-            else:
-                await update.message.reply_text(f"下载失败：{err_msg}")
-            break
+    # 提交为后台任务，不阻塞当前 handler，允许并发处理多个文件
+    asyncio.create_task(
+        _process_video_task(
+            context, chat_id, telegram_file_id, origin_name, file_size, local_target_path
+        )
+    )
 
 
 
