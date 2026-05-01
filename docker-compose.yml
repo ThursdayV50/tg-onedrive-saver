@@ -6,6 +6,6 @@ services:
     env_file:
       - .env
     environment:
-      - MSAL_CACHE_FILE=/data/msal_token_cache.bin
+      - RCLONE_CONFIG_FILE=/data/rclone.conf
     volumes:
       - ./data:/data
