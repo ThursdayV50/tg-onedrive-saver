@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -21,6 +22,7 @@ PROFILE_DIR = os.getenv("ONEDRIVE_BROWSER_PROFILE_DIR", "/data/browser-profile")
 ONEDRIVE_WEB_URL = os.getenv("ONEDRIVE_WEB_URL", "https://onedrive.live.com").strip()
 SCAN_INTERVAL_SECONDS = int(os.getenv("ONEDRIVE_SCAN_INTERVAL_SECONDS", "15"))
 HEADLESS = os.getenv("ONEDRIVE_HEADLESS", "true").strip().lower() == "true"
+DEBUG_DIR = Path(os.getenv("ONEDRIVE_DEBUG_DIR", "/data/debug")).resolve()
 
 SUPPORTED_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 
@@ -32,6 +34,20 @@ def _iter_pending_files() -> list[Path]:
     candidates = [p for p in QUEUE_ROOT.rglob("*") if p.is_file()]
     video_files = [p for p in candidates if p.suffix.lower() in SUPPORTED_SUFFIXES]
     return sorted(video_files, key=lambda p: p.stat().st_mtime)
+
+
+def _save_debug_snapshot(page, reason: str) -> None:
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    safe_reason = re.sub(r"[^a-zA-Z0-9_-]+", "_", reason)[:40]
+    png_path = DEBUG_DIR / f"{ts}_{safe_reason}.png"
+    html_path = DEBUG_DIR / f"{ts}_{safe_reason}.html"
+    try:
+        page.screenshot(path=str(png_path), full_page=True)
+        html_path.write_text(page.content(), encoding="utf-8")
+        logger.info("已保存调试快照: %s , %s", png_path, html_path)
+    except Exception as exc:
+        logger.warning("保存调试快照失败: %s", exc)
 
 
 def _login_if_needed(page) -> None:
@@ -70,17 +86,76 @@ def _login_if_needed(page) -> None:
     page.wait_for_timeout(2000)
 
 
+def _try_upload_by_input(page, file_path: Path) -> bool:
+    selectors = [
+        'input[type="file"]',
+        'input[data-automationid="UploadInput"]',
+        'input[aria-label*="upload" i]',
+    ]
+    for sel in selectors:
+        inputs = page.locator(sel)
+        if inputs.count() > 0:
+            inputs.first.set_input_files(str(file_path))
+            return True
+    return False
+
+
+def _try_upload_by_button(page, file_path: Path) -> bool:
+    patterns = [
+        re.compile(r"upload", re.IGNORECASE),
+        re.compile(r"file upload", re.IGNORECASE),
+        re.compile(r"上传"),
+        re.compile(r"上载"),
+        re.compile(r"文件上传"),
+    ]
+
+    for pat in patterns:
+        # 直接点击“上传”按钮，若触发 file chooser 则上传
+        try:
+            with page.expect_file_chooser(timeout=3000) as fc_info:
+                page.get_by_role("button", name=pat).first.click()
+            chooser = fc_info.value
+            chooser.set_files(str(file_path))
+            return True
+        except Exception:
+            pass
+
+        # 某些 UI 先点“新建”，再点“上传文件”
+        try:
+            new_btn = page.get_by_role("button", name=re.compile(r"new|新建", re.IGNORECASE))
+            if new_btn.count() > 0:
+                new_btn.first.click()
+                page.wait_for_timeout(800)
+        except Exception:
+            pass
+
+        try:
+            with page.expect_file_chooser(timeout=3000) as fc_info:
+                page.get_by_role("menuitem", name=pat).first.click()
+            chooser = fc_info.value
+            chooser.set_files(str(file_path))
+            return True
+        except Exception:
+            pass
+
+    return False
+
+
 def _upload_one_file(page, file_path: Path) -> None:
     logger.info("准备上传文件: %s", file_path)
     page.goto(ONEDRIVE_WEB_URL, wait_until="domcontentloaded")
     page.wait_for_timeout(2000)
 
-    upload_inputs = page.locator('input[type="file"]')
-    input_count = upload_inputs.count()
-    if input_count == 0:
-        raise RuntimeError("未找到文件上传控件，页面可能未完全加载或账号无权限。")
+    uploaded = _try_upload_by_input(page, file_path)
+    if not uploaded:
+        uploaded = _try_upload_by_button(page, file_path)
+    if not uploaded:
+        _save_debug_snapshot(page, "upload_control_not_found")
+        raise RuntimeError(
+            f"未找到文件上传控件，当前页面: {page.url}。"
+            "已输出调试截图与HTML，请检查账号权限或页面结构。"
+        )
 
-    upload_inputs.first.set_input_files(str(file_path))
     logger.info("已触发网页上传: %s", file_path.name)
 
     # 轮询确认页面上出现文件名，作为上传成功信号
@@ -103,6 +178,7 @@ def run() -> None:
     Path(PROFILE_DIR).mkdir(parents=True, exist_ok=True)
     logger.info("启动 OneDrive 网页上传器，队列目录: %s", QUEUE_ROOT)
 
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
         context = pw.chromium.launch_persistent_context(
             PROFILE_DIR,

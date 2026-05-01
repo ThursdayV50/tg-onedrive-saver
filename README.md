@@ -47,6 +47,12 @@ docker compose logs -f tg-onedrive-bot
 docker compose logs -f onedrive-web-uploader
 ```
 
+若网页上传失败，可查看调试快照：
+
+```bash
+ls -lh data/debug
+```
+
 ## 6. 关键说明
 
 - 上传队列目录：`./data/queue/TelegramVideos`
@@ -61,6 +67,7 @@ docker compose logs -f onedrive-web-uploader
 - 检查账号密码是否正确
 - 检查是否触发 MFA / 验证码
 - 查看日志是否出现“未找到文件上传控件”
+- 检查 `data/debug` 目录中的截图与 HTML，确认当前页面是否为 OneDrive 文件页
 
 ### 机器人提示 File is too big
 
