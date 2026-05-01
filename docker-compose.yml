@@ -14,20 +14,16 @@ services:
     volumes:
       - ./data/tg-bot-api:/var/lib/telegram-bot-api
 
-  onedrive:
-    image: driveone/onedrive:edge
-    container_name: onedrive-sync
+  onedrive-web-uploader:
+    build: .
+    container_name: onedrive-web-uploader
     restart: unless-stopped
-    command:
-      - --monitor
-      - --upload-only
-      - --remove-source-files
-    environment:
-      - ONEDRIVE_UID=${ONEDRIVE_UID:-1000}
-      - ONEDRIVE_GID=${ONEDRIVE_GID:-1000}
+    env_file:
+      - .env
+    command: ["python", "/app/onedrive_web_uploader.py"]
     volumes:
-      - ./data/onedrive-conf:/onedrive/conf
-      - ./data/onedrive-sync:/onedrive/data
+      - ./data/queue:/sync
+      - ./data/browser-profile:/data/browser-profile
 
   tg-onedrive-bot:
     build: .
@@ -35,7 +31,7 @@ services:
     restart: unless-stopped
     depends_on:
       - telegram-bot-api
-      - onedrive
+      - onedrive-web-uploader
     env_file:
       - .env
     environment:
@@ -44,4 +40,4 @@ services:
       - TELEGRAM_LOCAL_MODE=false
       - ONEDRIVE_LOCAL_SYNC_DIR=/sync
     volumes:
-      - ./data/onedrive-sync:/sync
+      - ./data/queue:/sync

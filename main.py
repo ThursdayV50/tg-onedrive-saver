@@ -56,7 +56,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not update.message:
         return
     await update.message.reply_text(
-        "发送视频给我，我会先保存到同步目录，随后由 onedrive 客户端自动同步到云端。"
+        "发送视频给我，我会先保存到上传队列，随后由网页版 OneDrive 上传器自动提交。"
     )
 
 
@@ -85,17 +85,17 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     local_target_path = build_storage_path(origin_name)
 
-    await update.message.reply_text("收到视频，开始下载并加入 OneDrive 同步队列...")
+    await update.message.reply_text("收到视频，开始下载并加入 OneDrive 网页上传队列...")
     logger.info("开始处理视频: name=%s size=%s chat_id=%s", origin_name, file_size, chat_id)
 
     try:
         tg_file = await context.bot.get_file(telegram_file_id)
         await tg_file.download_to_drive(custom_path=local_target_path)
         await update.message.reply_text(
-            "下载完成，文件已加入 OneDrive 同步队列。\n"
+            "下载完成，文件已加入 OneDrive 网页上传队列。\n"
             f"本地路径：{local_target_path}"
         )
-        logger.info("文件已写入同步目录: %s", local_target_path)
+        logger.info("文件已写入网页上传队列: %s", local_target_path)
     except Exception as exc:
         logger.exception("处理视频失败")
         if "File is too big" in str(exc):
@@ -119,7 +119,7 @@ def validate_env() -> None:
 
 def main() -> None:
     validate_env()
-    logger.info("启动 Telegram Bot，下载目录: %s", ONEDRIVE_LOCAL_SYNC_DIR)
+    logger.info("启动 Telegram Bot，队列目录: %s", ONEDRIVE_LOCAL_SYNC_DIR)
 
     builder = (
         Application.builder()
