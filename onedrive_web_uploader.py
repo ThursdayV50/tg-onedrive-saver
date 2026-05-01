@@ -68,17 +68,59 @@ def _perform_login(page) -> None:
 
     logger.info("开始执行 OneDrive 网页登录。")
     try:
-        page.fill('input[type="email"]', LOGIN_EMAIL, timeout=20000)
-        page.click('input[type="submit"]')
-        page.wait_for_timeout(1000)
+        # 兼容“选择账户”页面：优先点击“使用其他账户”
+        for txt in ["使用其他账户", "Use another account", "Sign in with another account"]:
+            if page.get_by_text(txt, exact=False).count() > 0:
+                page.get_by_text(txt, exact=False).first.click()
+                page.wait_for_timeout(1200)
+                break
+
+        email_inputs = [
+            'input[type="email"]',
+            'input[name="loginfmt"]',
+            'input#i0116',
+        ]
+        filled = False
+        for sel in email_inputs:
+            if page.locator(sel).count() > 0:
+                page.fill(sel, LOGIN_EMAIL, timeout=20000)
+                filled = True
+                break
+        if filled:
+            # 下一步/继续
+            for sel in ['input[type="submit"]', 'button[type="submit"]', 'input#idSIButton9']:
+                if page.locator(sel).count() > 0:
+                    page.locator(sel).first.click()
+                    break
+            page.wait_for_timeout(1500)
+        else:
+            logger.warning("未捕获到邮箱输入框，继续尝试密码页或其他流程。")
     except PlaywrightTimeoutError:
-        logger.warning("未捕获到邮箱输入框，继续尝试后续步骤。")
+        logger.warning("邮箱步骤超时，继续尝试后续步骤。")
 
     try:
-        page.fill('input[type="password"]', LOGIN_PASSWORD, timeout=20000)
-        page.click('input[type="submit"]')
+        pwd_selectors = [
+            'input[type="password"]',
+            'input[name="passwd"]',
+            'input#i0118',
+        ]
+        filled_pwd = False
+        for sel in pwd_selectors:
+            if page.locator(sel).count() > 0:
+                page.fill(sel, LOGIN_PASSWORD, timeout=20000)
+                filled_pwd = True
+                break
+        if not filled_pwd:
+            _save_debug_snapshot(page, "password_input_not_found")
+            raise RuntimeError("未找到密码输入框，可能触发了额外验证/账户选择。")
+
+        for sel in ['input[type="submit"]', 'button[type="submit"]', 'input#idSIButton9']:
+            if page.locator(sel).count() > 0:
+                page.locator(sel).first.click()
+                break
     except PlaywrightTimeoutError as exc:
-        raise RuntimeError("未找到密码输入框，可能触发了额外验证。") from exc
+        _save_debug_snapshot(page, "password_step_timeout")
+        raise RuntimeError("密码步骤超时，可能触发了额外验证。") from exc
 
     page.wait_for_timeout(2000)
     if page.locator('input[id="idBtn_Back"]').count() > 0:
@@ -350,10 +392,15 @@ def run() -> None:
         )
         page = context.pages[0] if context.pages else context.new_page()
 
-        _login_if_needed(page)
-        _ensure_files_page(page)
-
         while True:
+            try:
+                _login_if_needed(page)
+                _ensure_files_page(page)
+            except Exception as exc:
+                logger.exception("登录或页面初始化失败，稍后重试: %s", exc)
+                time.sleep(10)
+                continue
+
             pending = _iter_pending_files()
             if not pending:
                 time.sleep(SCAN_INTERVAL_SECONDS)
