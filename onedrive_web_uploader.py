@@ -53,15 +53,16 @@ def _save_debug_snapshot(page, reason: str) -> None:
         logger.warning("保存调试快照失败: %s", exc)
 
 
-def _login_if_needed(page) -> None:
-    page.goto(ONEDRIVE_WEB_URL, wait_until="domcontentloaded")
-    page.wait_for_timeout(2000)
-
+def _is_login_page(page) -> bool:
     current = page.url.lower()
-    if "login.live.com" not in current and "microsoftonline.com" not in current:
-        logger.info("检测到已有登录态，跳过登录。")
-        return
+    if "login.live.com" in current or "microsoftonline.com" in current:
+        return True
+    if page.locator('input[type="email"]').count() > 0:
+        return True
+    return False
 
+
+def _perform_login(page) -> None:
     if not LOGIN_EMAIL or not LOGIN_PASSWORD:
         raise RuntimeError("未登录且缺少 ONEDRIVE_LOGIN_EMAIL/ONEDRIVE_LOGIN_PASSWORD。")
 
@@ -85,8 +86,20 @@ def _login_if_needed(page) -> None:
 
     page.wait_for_load_state("domcontentloaded")
     logger.info("登录流程执行完毕，等待进入 OneDrive。")
-    page.goto(ONEDRIVE_WEB_URL, wait_until="domcontentloaded")
+    page.goto(ONEDRIVE_FILES_URL, wait_until="domcontentloaded")
     page.wait_for_timeout(2000)
+
+
+def _login_if_needed(page) -> None:
+    # 先尝试进入目标文件页，再判断是否需要登录，避免误判“已有登录态”
+    page.goto(ONEDRIVE_FILES_URL, wait_until="domcontentloaded")
+    page.wait_for_timeout(2000)
+
+    if _is_login_page(page):
+        _perform_login(page)
+        return
+
+    logger.info("检测到已有登录态，跳过登录。")
 
 
 def _ensure_files_page(page) -> None:
@@ -100,6 +113,10 @@ def _ensure_files_page(page) -> None:
             page.goto(url, wait_until="domcontentloaded")
             page.wait_for_timeout(2000)
             current = page.url.lower()
+            if _is_login_page(page):
+                logger.info("检测到登录页，尝试自动登录。")
+                _perform_login(page)
+                current = page.url.lower()
             if "microsoft.com/microsoft-365/onedrive/online-cloud-storage" in current:
                 # 营销页时尝试点“登录/转到OneDrive”
                 for btn_pat in [
