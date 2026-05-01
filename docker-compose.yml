@@ -1,0 +1,11 @@
+services:
+  tg-onedrive-bot:
+    build: .
+    container_name: tg-onedrive-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - MSAL_CACHE_FILE=/data/msal_token_cache.bin
+    volumes:
+      - ./data:/data
